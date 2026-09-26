@@ -1,0 +1,16 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 48 48" width="48" height="48" role="img" aria-label="Veltmoor">
+  <!-- Знак Veltmoor: маяк-ліхтар над хвилею в гранованій рамці. Власна графіка демо-концепту. -->
+  <defs>
+    <linearGradient id="vm-ring" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#ffa24d"/>
+      <stop offset="1" stop-color="#d9651a"/>
+    </linearGradient>
+  </defs>
+  <path d="M24 2.5 42.6 13.25v21.5L24 45.5 5.4 34.75v-21.5Z" fill="#0f1319" stroke="url(#vm-ring)" stroke-width="2.6" stroke-linejoin="round"/>
+  <path d="M26.5 17.2 39 12v13.6Z" fill="#ffd9a0" opacity=".5"/>
+  <path d="M20.6 32.5 22 18.8h4L27.4 32.5Z" fill="#e9ecef"/>
+  <path d="M21.3 18.8h5.4v-3.4h-5.4Z" fill="#ffa24d"/>
+  <path d="M20.6 15.4 24 11.8l3.4 3.6Z" fill="#e9ecef"/>
+  <path d="M22 24.2h4M21.7 28h4.6" stroke="#0f1319" stroke-width="1.6"/>
+  <path d="M11 35.2c3.2-2.4 6.4-2.4 9.6 0s6.4 2.4 9.6 0 5.2-2.2 6.8-1" fill="none" stroke="#3cc2b1" stroke-width="2.2" stroke-linecap="round"/>
+</svg>

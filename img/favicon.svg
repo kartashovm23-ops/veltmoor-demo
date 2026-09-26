@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 48 48" width="48" height="48">
+  <!-- Favicon Veltmoor: спрощений знак маяка для малих розмірів -->
+  <path d="M24 2.5 42.6 13.25v21.5L24 45.5 5.4 34.75v-21.5Z" fill="#0f1319" stroke="#f28a2b" stroke-width="3.2" stroke-linejoin="round"/>
+  <path d="M19.8 34 21.6 17h4.8L28.2 34Z" fill="#e9ecef"/>
+  <path d="M20.6 17h6.8v-4.4h-6.8Z" fill="#ffa24d"/>
+  <path d="M20 12.6 24 8.4l4 4.2Z" fill="#e9ecef"/>
+</svg>
