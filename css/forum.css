@@ -1016,11 +1016,6 @@ fieldset.field { border: 0; margin: 0; padding: 0; }
   .banner .bn-tag::after { width: 40px; margin-top: 10px; }
 }
 
-/* Постійне пояснення під шапкою: незалежний демо-концепт */
-.disclaimer { position: relative; z-index: 2; margin: 0; padding: 7px var(--gutter); border-bottom: 1px solid var(--line); background: rgba(242, 138, 43, .08);
-  color: var(--text-2); font-size: 12.5px; line-height: 1.45; text-align: center; }
-.disclaimer b { color: var(--orange-2); font-weight: 700; }
-@media (max-width: 760px) { .disclaimer { padding: 6px 14px; font-size: 12px; text-align: left; } .disclaimer span { display: block; } }
 .brandmark { border-radius: 0; }
 
 /* Нік автора в рядку теми — вбудоване посилання в підписі, а не другий заголовок */
