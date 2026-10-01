@@ -1085,3 +1085,29 @@ fieldset.field { border: 0; margin: 0; padding: 0; }
 /* Телефон: модальна панель знизу на всю ширину */
 .blockform.is-sheet { left: 0; right: 0; bottom: 0; top: auto; width: 100%; max-height: 82vh; border-radius: 12px 12px 0 0; border-width: 1px 0 0; padding-bottom: calc(14px + env(safe-area-inset-bottom)); }
 .blockform.is-sheet .bf-preview .rsec { grid-template-columns: minmax(0, 1fr); gap: 4px; }
+
+/* Вікно блоку без внутрішньої прокрутки: ширше й щільніше; якщо не вміщається — прокручується затемнення */
+.blockform { width: min(560px, calc(100vw - 24px)); max-height: none; overflow: visible; gap: 8px; padding: 10px 16px 14px; }
+.bf-top { margin-bottom: -2px; }
+.blockform .bf-row { grid-template-columns: 64px minmax(0, 1fr) auto; gap: 12px; align-items: end; }
+.blockform label, .bf-lbl { gap: 4px; font-size: 13px; font-weight: 700; }
+.bf-colors { display: grid; gap: 4px; }
+.bf-lbl span { font-weight: 400; color: var(--muted); }
+.bf-swatches { display: flex; gap: 8px; align-items: center; min-height: 36px; }
+.blockform .bf-color { position: relative; }
+.bf-items > span small { font-weight: 400; }
+.blockform .err:empty { display: none; }
+.bf-preview { max-height: none; overflow: visible; padding: 0 10px; }
+.bf-preview .rsec { padding: 6px 0; }
+.bf-actions { margin-top: 2px; }
+/* Модальний режим: затемнення — це прокручуваний контейнер, вікно всередині повне */
+.bf-backdrop { display: flex; flex-direction: column; overflow-y: auto; overscroll-behavior: contain; padding: 16px 12px; }
+.blockform.is-modal { position: relative; left: auto; top: auto; bottom: auto; margin: auto; flex: none; }
+/* Телефон: панель знизу; якщо вища за екран — прокручується затемнення */
+.bf-backdrop.is-sheet { padding: 24px 0 0; }
+.bf-backdrop.is-sheet .blockform { width: 100%; margin: auto 0 0; border-radius: 12px 12px 0 0; border-width: 1px 0 0; padding-bottom: calc(14px + env(safe-area-inset-bottom)); }
+.bf-backdrop.is-sheet .bf-preview .rsec { grid-template-columns: minmax(0, 1fr); gap: 4px; }
+@media (max-width: 760px) {
+  .blockform .bf-row { grid-template-columns: 64px minmax(0, 1fr); }
+  .blockform .bf-colors { grid-column: 1 / -1; grid-template-columns: auto 1fr; align-items: center; gap: 10px; }
+}

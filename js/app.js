@@ -692,30 +692,37 @@
     Object.assign(bf, { form: null, backdrop: null, btn: null, ta: null, start: null, end: null });
     if (refocus && ta?.isConnected) ta.focus();
   }
+  /*
+   * Розміщення без внутрішньої прокрутки вікна:
+   * — на комп'ютері, якщо вікно повністю вміщається під або над кнопкою «Блок», воно стоїть поруч із нею
+   *   (так не накриває рядок панелі з «Опублікувати»);
+   * — інакше (телефон, низький екран, дуже довгий перегляд) — модальне вікно на затемненні,
+   *   і прокручується саме затемнення, як сторінка, а вікно лишається повним, з усіма кнопками.
+   */
+  function setBlockMode(modal, sheet) {
+    const f = bf.form, b = bf.backdrop;
+    b.hidden = !modal;
+    b.classList.toggle('is-sheet', modal && sheet);
+    f.classList.toggle('is-modal', modal);
+    if (modal) { if (f.parentNode !== b) b.append(f); f.style.left = f.style.top = f.style.bottom = ''; }
+    else if (f.parentNode !== document.body) document.body.append(f);
+  }
   function placeBlockForm() {
     const f = bf.form;
     if (!f) return;
-    const sheet = innerWidth <= 760;
-    f.classList.toggle('is-sheet', sheet);
-    bf.backdrop.hidden = !sheet;
-    if (sheet) { f.style.left = f.style.top = f.style.bottom = f.style.maxHeight = ''; return; }
+    if (innerWidth <= 760) { setBlockMode(true, true); return; }
     const r = bf.btn.getBoundingClientRect(), m = 12, gap = 8;
     // Не заходимо під липку шапку сайту (у діалозі створення теми шапка під затемненням — тоді лише відступ)
     const head = overlay.hidden ? $('.header')?.getBoundingClientRect().bottom || 0 : 0;
     const topLim = Math.max(m, head + gap);
-    f.style.maxHeight = '';
     const w = f.offsetWidth, h = f.offsetHeight;
     const below = innerHeight - r.bottom - gap - m, above = r.top - gap - topLim;
-    // Під кнопкою, якщо вміщається; інакше над панеллю — так форма не накриває рядок із «Опублікувати».
-    // Над кнопкою вікно прив'язане нижнім краєм і росте вгору; висота обмежена видимою частиною екрана.
-    const down = below >= h || below >= above;
-    const maxH = Math.min(innerHeight - topLim - m, Math.max(160, down ? below : above));
-    f.style.maxHeight = `${maxH}px`;
+    const btnVisible = r.bottom > topLim && r.top < innerHeight - m;
+    if (!btnVisible || (below < h && above < h)) { setBlockMode(true, false); return; }
+    setBlockMode(false);
     f.style.left = `${Math.min(Math.max(m, r.left), innerWidth - w - m)}px`;
-    // Навіть якщо кнопку прокрутили за край екрана, вікно лишається в межах видимої області
-    const fh = Math.min(h, maxH);
-    if (down) { f.style.top = `${Math.min(Math.max(topLim, r.bottom + gap), innerHeight - m - fh)}px`; f.style.bottom = 'auto'; }
-    else { f.style.top = 'auto'; f.style.bottom = `${Math.min(Math.max(m, innerHeight - r.top + gap), innerHeight - topLim - fh)}px`; }
+    if (below >= h) { f.style.top = `${r.bottom + gap}px`; f.style.bottom = 'auto'; }
+    else { f.style.top = 'auto'; f.style.bottom = `${innerHeight - r.top + gap}px`; }
   }
   function openBlockForm(btn) {
     const ta = document.getElementById(btn.dataset.target);
@@ -737,17 +744,18 @@
       <div class="bf-row">
         <label class="bf-num">Номер<input id="bf-num" type="number" min="1" max="99" value="${d.num}" inputmode="numeric"></label>
         <label class="bf-title">Заголовок<input id="bf-title" type="text" maxlength="60" value="${esc(d.title)}" placeholder="Напр. Створення" autocomplete="off"></label>
+        <div class="bf-colors" role="radiogroup" aria-labelledby="bf-color-lbl">
+          <span class="bf-lbl" id="bf-color-lbl">Колір <span id="bf-color-name">${BLOCK_COLORS.find(([k]) => k === d.color)[1]}</span></span>
+          <span class="bf-swatches">${BLOCK_COLORS.map(([k, uk]) => `<label class="bf-color c-${k}" title="${uk}"><input type="radio" name="bf-color" value="${k}"${d.color === k ? ' checked' : ''}><span class="sr">${uk}</span></label>`).join('')}</span>
+        </div>
       </div>
-      <fieldset class="bf-colors"><legend>Колір <span id="bf-color-name">${BLOCK_COLORS.find(([k]) => k === d.color)[1]}</span></legend>
-        ${BLOCK_COLORS.map(([k, uk]) => `<label class="bf-color c-${k}" title="${uk}"><input type="radio" name="bf-color" value="${k}"${d.color === k ? ' checked' : ''}><span class="sr">${uk}</span></label>`).join('')}
-      </fieldset>
-      <label class="bf-items">Пункти <small>кожен з нового рядка</small><textarea id="bf-items" rows="3" placeholder="Перший пункт&#10;Другий пункт">${esc(d.items.join('\n'))}</textarea></label>
+      <label class="bf-items"><span>Пункти <small>— кожен з нового рядка</small></span><textarea id="bf-items" rows="3" placeholder="Перший пункт&#10;Другий пункт">${esc(d.items.join('\n'))}</textarea></label>
       <span class="err" id="bf-err" role="alert"></span>
       <div class="bf-preview" id="bf-preview" aria-label="Попередній вигляд блоку"></div>
       <div class="bf-actions"><button class="btn btn-primary" type="button" data-block-save>${cur ? 'Оновити блок' : 'Вставити блок'}</button><button class="btn" type="button" data-block-cancel>Скасувати</button></div>`;
     const backdrop = document.createElement('div');
     backdrop.className = 'bf-backdrop';
-    backdrop.setAttribute('data-block-cancel', '');
+    backdrop.hidden = true;
     document.body.append(backdrop, form);
     Object.assign(bf, { form, backdrop, btn, ta, pos, start: cur ? cur.start : null, end: cur ? cur.end : null });
     updateBlockPreview();
@@ -760,7 +768,10 @@
   if ('ResizeObserver' in window) new ResizeObserver(() => placeBlockForm()).observe(document.body);
   // Клік поза формою (не по кнопці «Блок») закриває її без вставки
   document.addEventListener('mousedown', e => {
-    if (bf.form && !bf.form.contains(e.target) && !e.target.closest('[data-block-open]')) closeBlockForm();
+    if (!bf.form || bf.form.contains(e.target) || e.target.closest('[data-block-open]')) return;
+    // Смуга прокрутки затемнення — не «клік поза вікном»
+    if (e.target === bf.backdrop && e.clientX >= bf.backdrop.clientWidth) return;
+    closeBlockForm();
   });
   function blockFormData() {
     return {
