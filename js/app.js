@@ -14,6 +14,10 @@
   /* ---------- Стан ---------- */
   // Розділи редагуються на екрані керування, тому це живий список, а не копія структури
   const ROWS = D.STRUCTURE.flatMap(g => g.rows.map(r => ({ visibility: 'public', topicsBy: 'players', visHistory: [], ...r, group: g })));
+  // Батьківські розділи («Основний розділ», «Ігровий розділ») — теж розділи з власними темами.
+  // Читати можуть усі; створювати теми безпосередньо в них — лише модератор і розробник (topicsBy: 'team').
+  D.STRUCTURE.forEach(g => ROWS.push({ slug: g.key, name: g.title, isGroup: true, group: g, children: [], visibility: 'public', topicsBy: 'team', genre: 'discussion', visHistory: [],
+    desc: 'Загальні теми всього розділу. Публікують модератори й розробники; тематичні підрозділи — на головній.' }));
   const topics = structuredClone(D.TOPICS);
   let replySeq = 0;
   const isAppeal = t => !!D.KINDS[t.kind]?.appeal;
@@ -368,11 +372,11 @@
     let matches = 0;
     ixCounter = 0;
     const html = D.STRUCTURE.map(g => {
-      const rows = ROWS.filter(r => r.group === g && canSee(r) && (!needle || [g.title, r.name, r.desc || '', ...r.children].join(' ').toLowerCase().includes(needle)));
+      const rows = ROWS.filter(r => r.group === g && !r.isGroup && canSee(r) && (!needle || [g.title, r.name, r.desc || '', ...r.children].join(' ').toLowerCase().includes(needle)));
       matches += rows.length;
       if (!rows.length) return '';
       return `<section class="ix-group" aria-labelledby="grp-${g.key}">
-        <h3 class="ix-grouphead" id="grp-${g.key}">${esc(g.title)}<span>${plural(rows.length, 'розділ', 'розділи', 'розділів')}</span></h3>
+        <h3 class="ix-grouphead" id="grp-${g.key}"><a href="#/section/${g.key}">${esc(g.title)}</a><span>${plural(rows.length, 'розділ', 'розділи', 'розділів')}</span></h3>
         <ol class="ix-list">${rows.map(rowHtml).join('')}</ol>
       </section>`;
     }).join('');
@@ -495,7 +499,7 @@
   function renderSearch(q) {
     const needle = q.trim().toLowerCase();
     const found = needle ? shownTopics().filter(t => topicText(t).includes(needle)) : [];
-    const secs = needle ? ROWS.filter(r => canSee(r) && [r.name, r.desc || '', ...r.children].join(' ').toLowerCase().includes(needle)) : [];
+    const secs = needle ? ROWS.filter(r => !r.isGroup && canSee(r) && [r.name, r.desc || '', ...r.children].join(' ').toLowerCase().includes(needle)) : [];
     // Учасники шукаються лише за ніком
     const people = needle ? USERS.filter(u => u.name.toLowerCase().includes(needle)) : [];
     $('#view-search').innerHTML = `
@@ -1203,7 +1207,7 @@
 
   function renderManage(slug) {
     const r = slug ? rowBy(slug) : null;
-    const list = ROWS.filter(x => canSee(x) && !x.external);
+    const list = ROWS.filter(x => canSee(x) && !x.external && !x.isGroup);
     $('#view-manage').innerHTML = `
       ${teamHead('manage', 'Керування розділами', 'Модератор керує публічними розділами й розділом команди. Розділ розробників бачить і змінює лише розробник. Кожна зміна потрапляє в журнал.', 'manage-title')}
       <div class="managegrid">
@@ -1786,7 +1790,7 @@
         }
       }
     } else if (kind === 'manage') {
-      if (!canModerate() || (arg && !canManage(rowBy(arg)))) deny();
+      if (!canModerate() || (arg && (!canManage(rowBy(arg)) || rowBy(arg).isGroup))) deny();
       else {
         renderManage(arg);
         show('manage');
@@ -1911,6 +1915,106 @@
       <div class="route-actions">${actions}</div>`, '#modaltitle');
   }
 
+  /* ---------- Вибір розділу у формі створення теми: власний список у стилі сайту ---------- */
+  // Назва варіанта: батьківський розділ — просто назва, підрозділ — «Розділ › Підрозділ»
+  const spText = r => r.isGroup ? r.name : `${r.group.title} › ${r.name}`;
+  const spNote = r => [r.isGroup ? 'весь розділ' : '', r.visibility !== 'public' ? VIS[r.visibility] : ''].filter(Boolean).join(' · ');
+  function sectionPickerHtml(writable, sel) {
+    const cur = rowBy(sel);
+    // Ієрархія: батьківський розділ (варіант, якщо роль може в ньому публікувати, інакше лише заголовок групи) → підрозділи з відступом
+    const items = D.STRUCTURE.map(g => {
+      const parent = writable.find(r => r.isGroup && r.group === g);
+      const kids = writable.filter(r => !r.isGroup && r.group === g);
+      if (!parent && !kids.length) return '';
+      const opt = (r, lvl) => `<li class="sp-opt lvl-${lvl}" id="sp-opt-${r.slug}" role="option" data-value="${r.slug}" aria-selected="${r.slug === sel}">
+          <span class="sp-name">${esc(lvl ? r.name : r.group.title)}</span>${spNote(r) ? `<small>${esc(spNote(r))}</small>` : ''}<span class="sp-check" aria-hidden="true">✓</span></li>`;
+      return (parent ? opt(parent, 0) : `<li class="sp-group" role="presentation">${esc(g.title)}</li>`) + kids.map(r => opt(r, 1)).join('');
+    }).join('');
+    return `<div class="field sp-field">
+      <span class="sp-label" id="c-section-lbl">Розділ</span>
+      <div class="sp">
+        <button type="button" class="sp-btn" id="c-section-btn" aria-haspopup="listbox" aria-expanded="false" aria-controls="c-section-list" aria-labelledby="c-section-lbl c-section-btn">
+          <span class="sp-val">${esc(spText(cur))}</span>${spNote(cur) ? `<small class="sp-val-note">${esc(spNote(cur))}</small>` : ''}<span class="sp-caret" aria-hidden="true">▾</span>
+        </button>
+        <ul class="sp-list" id="c-section-list" role="listbox" tabindex="-1" aria-labelledby="c-section-lbl" hidden>${items}</ul>
+        <input type="hidden" id="c-section" value="${esc(sel)}">
+      </div>
+    </div>`;
+  }
+  const spOpts = () => $$('#c-section-list .sp-opt');
+  function spPlace() {
+    const list = $('#c-section-list'), btn = $('#c-section-btn');
+    if (!list || list.hidden) return;
+    const r = btn.getBoundingClientRect(), m = 10, gap = 4;
+    const below = innerHeight - r.bottom - gap - m, above = r.top - gap - m;
+    const want = Math.min(list.scrollHeight, 340);
+    const down = below >= want || below >= above;
+    // Фіксоване положення: список не обрізається прокручуваним вікном діалогу й не виходить за екран
+    list.style.left = `${Math.max(m, Math.min(r.left, innerWidth - r.width - m))}px`;
+    list.style.width = `${Math.min(r.width, innerWidth - 2 * m)}px`;
+    list.style.maxHeight = `${Math.max(140, Math.min(340, down ? below : above))}px`;
+    if (down) { list.style.top = `${r.bottom + gap}px`; list.style.bottom = 'auto'; }
+    else { list.style.top = 'auto'; list.style.bottom = `${innerHeight - r.top + gap}px`; }
+  }
+  function spSetActive(opt) {
+    spOpts().forEach(o => o.classList.toggle('is-active', o === opt));
+    if (!opt) return;
+    $('#c-section-list').setAttribute('aria-activedescendant', opt.id);
+    opt.scrollIntoView({ block: 'nearest' });
+  }
+  function spOpen() {
+    const list = $('#c-section-list');
+    if (!list || !list.hidden) return;
+    list.hidden = false;
+    $('#c-section-btn').setAttribute('aria-expanded', 'true');
+    spPlace();
+    spSetActive(spOpts().find(o => o.getAttribute('aria-selected') === 'true') || spOpts()[0]);
+    list.focus({ preventScroll: true });
+  }
+  function spClose(refocus = true) {
+    const list = $('#c-section-list');
+    if (!list || list.hidden) return;
+    list.hidden = true;
+    $('#c-section-btn').setAttribute('aria-expanded', 'false');
+    if (refocus) $('#c-section-btn').focus({ preventScroll: true });
+  }
+  function spChoose(opt) {
+    const r = rowBy(opt.dataset.value);
+    if (!r || !canCreateIn(r)) return; // список показує лише дозволені розділи; перевірка ще раз на випадок підміни
+    $('#c-section').value = r.slug;
+    spOpts().forEach(o => o.setAttribute('aria-selected', String(o === opt)));
+    $('#c-section-btn').innerHTML = `<span class="sp-val">${esc(spText(r))}</span>${spNote(r) ? `<small class="sp-val-note">${esc(spNote(r))}</small>` : ''}<span class="sp-caret" aria-hidden="true">▾</span>`;
+    spClose();
+  }
+  document.addEventListener('click', e => {
+    if (e.target.closest('#c-section-btn')) { $('#c-section-list').hidden ? spOpen() : spClose(); return; }
+    const opt = e.target.closest('#c-section-list .sp-opt');
+    if (opt) spChoose(opt);
+  });
+  document.addEventListener('mousedown', e => {
+    if ($('#c-section-list') && !$('#c-section-list').hidden && !e.target.closest('.sp')) spClose(false);
+  });
+  document.addEventListener('mousemove', e => {
+    const opt = e.target.closest?.('#c-section-list .sp-opt');
+    if (opt && !opt.classList.contains('is-active')) spSetActive(opt);
+  });
+  // Клавіатура: стрілки, Home/End, Enter/пробіл — вибір; Esc закриває лише список, Tab — закриває й іде далі
+  document.addEventListener('keydown', e => {
+    if (e.target.id === 'c-section-btn' && ['ArrowDown', 'ArrowUp', 'Enter', ' '].includes(e.key)) { e.preventDefault(); spOpen(); return; }
+    if (e.target.id !== 'c-section-list') return;
+    const opts = spOpts(), i = opts.findIndex(o => o.classList.contains('is-active'));
+    const go = n => { e.preventDefault(); spSetActive(opts[Math.max(0, Math.min(opts.length - 1, n))]); };
+    if (e.key === 'ArrowDown') go(i + 1);
+    else if (e.key === 'ArrowUp') go(i - 1);
+    else if (e.key === 'Home') go(0);
+    else if (e.key === 'End') go(opts.length - 1);
+    else if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); if (opts[i]) spChoose(opts[i]); }
+    else if (e.key === 'Escape') { e.preventDefault(); e.stopImmediatePropagation(); spClose(); }
+    else if (e.key === 'Tab') spClose(false);
+  }, true);
+  addEventListener('resize', () => spPlace());
+  addEventListener('scroll', () => spPlace(), true);
+
   /* ---------- Створення теми (лише в пам'яті вкладки) ---------- */
   let pendingFiles = [];
   function openComposer(slug, templateKey) {
@@ -1926,10 +2030,7 @@
     pendingFiles = [];
     openModal('Нова тема', 'Створити тему', `
       <form id="composer" class="composer" novalidate>
-        <div class="field">
-          <label for="c-section">Розділ</label>
-          <select id="c-section">${writable.map(r => `<option value="${r.slug}"${r.slug === sel ? ' selected' : ''}>${esc(r.group.title)} › ${esc(r.name)}${r.visibility !== 'public' ? ` (${VIS[r.visibility]})` : ''}</option>`).join('')}</select>
-        </div>
+        ${sectionPickerHtml(writable, sel)}
         ${staff ? `
         <fieldset class="field">
           <legend>Тип теми</legend>
@@ -1960,7 +2061,7 @@
         <input type="hidden" id="c-template" value="${esc(templateKey || '')}">
         <div class="route-note">Автор: ${esc(me().name)} · ${ROLE_NAME[myRole()]}. ${staff ? '' : 'Після публікації назву, розділ і налаштування теми змінює лише модерація; власне повідомлення ви зможете відредагувати. '}Демо: тема з’явиться лише в цій вкладці. Нічого не надсилається.</div>
         <div class="route-actions"><button class="btn btn-primary" type="submit">Опублікувати</button><button class="btn" type="button" data-cancel>Скасувати</button></div>
-      </form>`, tpl?.title ? '#c-title' : '#c-section');
+      </form>`, tpl?.title ? '#c-title' : '#c-section-btn');
   }
 
   function composerSubmit(form) {
