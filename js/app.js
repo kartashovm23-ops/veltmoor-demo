@@ -64,7 +64,8 @@
     if (D.DEMO_LOGIN[r]) state.userId = D.DEMO_LOGIN[r];
     if (userBy(q.get('as'))) state.userId = q.get('as');
   }
-  const VIS = { public: 'Публічний', team: 'Команда', dev: 'Розробники' };
+  // Назви рівнів доступу до розділу (так само в картках, налаштуваннях і журналі)
+  const VIS = { public: 'Усі', team: 'Хелпери та вище', mod: 'Модератори та вище', dev: 'Тільки розробник', private: 'Тільки я' };
 
   // Демо-годинник: «перемотка» часу, щоб перевірити закінчення мутів і банів без очікування
   const now = () => Date.now() + state.clockOffset;
@@ -97,11 +98,21 @@
   const isTeam = () => atLeast('helper');       // хелпер, модератор, розробник
   const canModerate = () => atLeast('mod');     // керування темами й розділами
   const isDev = () => myRole() === 'dev';
-  const canSee = r => !!r && (r.visibility === 'public' || (r.visibility === 'team' && isTeam()) || (r.visibility === 'dev' && isDev()));
+  /*
+   * Доступ до розділу (видимість картки, відкриття, теми всередині):
+   * public — усі · team — хелпери та вище · mod — модератори та вище · dev — лише розробники ·
+   * private — «Тільки я»: лише розробник-автор (owner), навіть інші розробники не бачать.
+   * Доступ на читання не дає права публікувати — це окремо (topicsBy, тип теми, закриття, мут).
+   */
+  const canSee = r => !!r && ({
+    public: true, team: isTeam(), mod: canModerate(), dev: isDev(), private: isDev() && r.owner === state.userId
+  })[r.visibility] === true;
   // Мут забороняє створювати теми й писати; читати можна
   const canCreateIn = r => canSee(r) && !r.external && !isMuted() && (r.topicsBy === 'players' || canModerate());
-  // Модератор керує публічними й командними розділами; розділи розробників — лише розробник
-  const canManage = r => canModerate() && canSee(r) && !r.external && (r.visibility !== 'dev' || isDev());
+  // Хто який доступ може призначити розділу: модератор — перші три рівні, розробник — усі, включно з «Тільки я»
+  const canSetVis = v => ['public', 'team', 'mod'].includes(v) ? canModerate() : (v === 'dev' || v === 'private') && isDev();
+  // Модератор керує розділами, які бачить, крім розділів розробників; розробник — усіма видимими йому
+  const canManage = r => canModerate() && canSee(r) && !r.external && canSetVis(r.visibility);
   const seeTopic = t => canSee(rowBy(t.section)) && (!t.hiddenTopic || canModerate());
 
   // Хто кого може карати: хелпер — лише мут гравцям; модератор — мут і тимчасовий бан гравцям і хелперам;
@@ -159,7 +170,9 @@
   const muteLine = p => `Мут ${untilText(p)}. Причина: ${esc(p.reason)}.`;
 
   // Модератор бачить дії хелперів і модераторів у доступних йому розділах; розробник — усе
-  const canSeeLog = e => isDev() || (canModerate() && RANK[e.byRole] <= RANK.mod && (!e.section || canSee(rowBy(e.section))));
+  // Розробник бачить увесь журнал, крім записів про чужі особисті розділи «Тільки я»
+  const logSectionOk = e => !e.section || !rowBy(e.section) || canSee(rowBy(e.section));
+  const canSeeLog = e => (isDev() && logSectionOk(e)) || (canModerate() && RANK[e.byRole] <= RANK.mod && logSectionOk(e));
 
   /* ---------- Профілі: активність і внесок учасника ---------- */
   // Дії в цій вкладці (відповідь, тема, редагування, профіль). vis — хто може бачити цю дію.
@@ -376,7 +389,7 @@
       matches += rows.length;
       if (!rows.length) return '';
       return `<section class="ix-group" aria-labelledby="grp-${g.key}">
-        <h3 class="ix-grouphead" id="grp-${g.key}"><a href="#/section/${g.key}">${esc(g.title)}</a><span>${plural(rows.length, 'розділ', 'розділи', 'розділів')}</span></h3>
+        <h3 class="ix-grouphead" id="grp-${g.key}"><a href="#/section/${g.key}">${esc(g.title)}</a><span>${plural(rows.length, 'розділ', 'розділи', 'розділів')}${canModerate() ? ` <button class="ix-newsec" type="button" data-new-section="${g.key}" aria-label="Створити розділ у групі «${esc(g.title)}»">+ Розділ</button>` : ''}</span></h3>
         <ol class="ix-list">${rows.map(rowHtml).join('')}</ol>
       </section>`;
     }).join('');
@@ -1178,31 +1191,71 @@
   }
 
   /* ---------- Керування розділами (команда) ---------- */
-  function sectionForm(r) {
-    const vis = r ? r.visibility : 'team';
-    const by = r ? r.topicsBy : 'team';
-    const prev = r?.visHistory.at(-1);
-    const canRestore = prev && (prev !== 'dev' || isDev());
-    const radio = (name, value, label, hint, checked, disabled) => `<label class="choice${disabled ? ' is-disabled' : ''}">
-        <input type="radio" name="${name}" value="${value}"${checked ? ' checked' : ''}${disabled ? ' disabled' : ''}>
-        <span><b>${label}</b><small>${hint}</small></span></label>`;
-    return `<form id="secform" class="card secform" data-slug="${r ? r.slug : ''}" novalidate>
-      <h2>${r ? `Налаштування: ${esc(r.name)}` : 'Новий розділ'}</h2>
-      <div class="field"><label for="s-name">Назва</label><input id="s-name" type="text" maxlength="60" value="${esc(r?.name || '')}" aria-describedby="s-name-err" autocomplete="off"><span class="err" id="s-name-err"></span></div>
-      <div class="field"><label for="s-desc">Опис <span class="opt">(необов’язково)</span></label><textarea id="s-desc" rows="2" maxlength="160">${esc(r?.desc || '')}</textarea></div>
-      <div class="field"><label for="s-group">Група на головній</label><select id="s-group">${D.STRUCTURE.map(g => `<option value="${g.key}"${(r ? r.group.key : 'main') === g.key ? ' selected' : ''}>${esc(g.title)}</option>`).join('')}</select></div>
-      <fieldset class="field"><legend>Хто бачить розділ</legend>
-        ${radio('s-vis', 'public', 'Публічний', 'Бачать усі, зокрема гравці', vis === 'public')}
-        ${radio('s-vis', 'team', 'Розділ команди', 'Хелпери, модератори й розробники', vis === 'team')}
-        ${radio('s-vis', 'dev', 'Розділ розробників', isDev() ? 'Лише розробники' : 'Лише розробники — призначає тільки розробник', vis === 'dev', !isDev())}
-        ${prev ? `<div class="restorevis"><button class="btn" type="button" data-restore-vis ${canRestore ? '' : 'disabled'}>↶ Відновити попередню видимість: ${VIS[prev]}</button>${canRestore ? '' : '<small>Лише розробник може повернути доступ «Розробники».</small>'}</div>` : ''}
+  /*
+   * Поля розділу — спільні для сторінки «Розділи» та режиму «Створити розділ» у діалозі.
+   * p — префікс id (на сторінці й у діалозі поля не конфліктують).
+   */
+  const ACCESS_OPTS = [
+    ['public', 'Усі', 'Бачать гравці й уся команда'],
+    ['team', 'Хелпери та вище', 'Хелпери, модератори й розробник'],
+    ['mod', 'Модератори та вище', 'Модератори й розробник'],
+    ['dev', 'Тільки розробник', 'Доступний лише ролі «Розробник»'],
+    ['private', 'Тільки я', 'Особистий розділ: бачите лише ви, навіть інші розробники — ні']
+  ];
+  const sectionRadio = (name, value, label, hint, checked, disabled) => `<label class="choice${disabled ? ' is-disabled' : ''}">
+      <input type="radio" name="${name}" value="${value}"${checked ? ' checked' : ''}${disabled ? ' disabled' : ''}>
+      <span><b>${label}</b><small>${hint}</small></span></label>`;
+  function sectionFieldsHtml(r, p, defGroup = 'main') {
+    const vis = r ? r.visibility : 'public';
+    const by = r ? r.topicsBy : 'players';
+    const grp = r ? r.group.key : defGroup;
+    // «Тільки я» пропонуємо лише розробнику; модератор бачить рівні розробника неактивними з поясненням
+    const access = ACCESS_OPTS.filter(([v]) => v !== 'private' || isDev() || vis === 'private');
+    return `
+      <div class="field"><label for="${p}-name">Назва розділу</label><input id="${p}-name" type="text" maxlength="60" value="${esc(r?.name || '')}" aria-describedby="${p}-name-err" autocomplete="off" placeholder="Напр. Порт і логістика"><span class="err" id="${p}-name-err"></span></div>
+      <div class="field"><label for="${p}-desc">Опис <span class="opt">(необов’язково)</span></label><textarea id="${p}-desc" rows="2" maxlength="160" placeholder="Коротко: що обговорюють у розділі">${esc(r?.desc || '')}</textarea></div>
+      <fieldset class="field"><legend>Розташування на головній</legend>
+        <div class="sec-place">${D.STRUCTURE.map(g => sectionRadio(`${p}-group`, g.key, esc(g.title), `Окрема картка поруч із «${esc(ROWS.find(x => x.group === g && !x.isGroup)?.name || '')}» та іншими`, grp === g.key)).join('')}</div>
+      </fieldset>
+      <fieldset class="field"><legend>Доступ — хто бачить і відкриває розділ</legend>
+        ${access.map(([v, label, hint]) => sectionRadio(`${p}-vis`, v, label, canSetVis(v) ? hint : `${hint} — призначає лише розробник`, vis === v, !canSetVis(v))).join('')}
       </fieldset>
       <fieldset class="field"><legend>Хто створює теми</legend>
-        ${radio('s-by', 'players', 'Гравці й команда', 'Гравці бачать кнопку «Створити тему»', by === 'players')}
-        ${radio('s-by', 'team', 'Лише модератори й розробники', 'Гравці й хелпери можуть лише читати й відповідати', by === 'team')}
-      </fieldset>
+        ${sectionRadio(`${p}-by`, 'players', 'Усі, хто бачить розділ', 'Читання й створення тем — за доступом вище', by === 'players')}
+        ${sectionRadio(`${p}-by`, 'team', 'Лише модератори й розробник', 'Решта, хто бачить розділ, лише читає й відповідає', by === 'team')}
+      </fieldset>`;
+  }
+  function sectionForm(r) {
+    const prev = r?.visHistory.at(-1);
+    const canRestore = prev && canSetVis(prev);
+    return `<form id="secform" class="card secform" data-slug="${r ? r.slug : ''}" novalidate>
+      <h2>${r ? `Налаштування: ${esc(r.name)}` : 'Новий розділ'}</h2>
+      ${sectionFieldsHtml(r, 's')}
+      ${prev ? `<div class="restorevis"><button class="btn" type="button" data-restore-vis ${canRestore ? '' : 'disabled'}>↶ Відновити попередній доступ: ${VIS[prev]}</button>${canRestore ? '' : '<small>Цей рівень доступу може повернути лише розробник.</small>'}</div>` : ''}
       <div class="route-actions"><button class="btn btn-primary" type="submit">${r ? 'Зберегти зміни' : 'Створити розділ'}</button><a class="btn" href="#/manage">Скасувати</a></div>
     </form>`;
+  }
+  // Зчитати й перевірити поля розділу; повертає дані або null (помилка вже показана біля поля)
+  function sectionDataFrom(form, p) {
+    const name = $(`#${p}-name`).value.replace(/\s+/g, ' ').trim();
+    if (name.length < 3) { $(`#${p}-name-err`).textContent = 'Назва має містити щонайменше 3 символи.'; $(`#${p}-name`).setAttribute('aria-invalid', 'true'); $(`#${p}-name`).focus(); return null; }
+    const vis = form.querySelector(`[name="${p}-vis"]:checked`)?.value;
+    if (!canModerate() || !vis || !canSetVis(vis)) return null; // захист на випадок підміни форми
+    return {
+      name, desc: $(`#${p}-desc`).value.trim(), visibility: vis,
+      topicsBy: form.querySelector(`[name="${p}-by"]:checked`).value,
+      group: D.STRUCTURE.find(g => g.key === form.querySelector(`[name="${p}-group"]:checked`)?.value) || D.STRUCTURE[0]
+    };
+  }
+  const SECTION_BY = { players: 'Усі, хто бачить розділ', team: 'Лише модератори й розробник' };
+  // Новий розділ — окрема картка в обраній групі головної (не підрозділ і не тема всередині іншого розділу)
+  function createSection(data) {
+    const slug = `sec${++state.sectionSeq}`;
+    const row = { slug, icon: data.visibility === 'public' ? '◆' : '▣', children: [], visHistory: [], ...data };
+    if (data.visibility === 'private') row.owner = state.userId;
+    ROWS.push(row);
+    logAdd({ type: 'section.create', target: { kind: 'section', id: slug, label: data.name }, section: slug, before: '—', after: `${data.group.title} · ${VIS[data.visibility]} · ${SECTION_BY[data.topicsBy]}` });
+    return row;
   }
 
   function renderManage(slug) {
@@ -1225,16 +1278,10 @@
   }
 
   function saveSection(form) {
-    const name = $('#s-name').value.replace(/\s+/g, ' ').trim();
-    if (name.length < 3) { $('#s-name-err').textContent = 'Назва має містити щонайменше 3 символи.'; $('#s-name').setAttribute('aria-invalid', 'true'); $('#s-name').focus(); return; }
-    const vis = form.querySelector('[name="s-vis"]:checked').value;
-    if (!canModerate() || (vis === 'dev' && !isDev())) return; // захист на випадок підміни форми
-    const data = {
-      name, desc: $('#s-desc').value.trim(), visibility: vis,
-      topicsBy: form.querySelector('[name="s-by"]:checked').value,
-      group: D.STRUCTURE.find(g => g.key === $('#s-group').value)
-    };
-    const BY = { players: 'Гравці й команда', team: 'Лише модератори й розробники' };
+    const data = sectionDataFrom(form, 's');
+    if (!data) return;
+    const { name, visibility: vis } = data;
+    const BY = SECTION_BY;
     const r = form.dataset.slug && rowBy(form.dataset.slug);
     if (r) {
       if (!canManage(r)) return;
@@ -1246,14 +1293,13 @@
         r.group !== data.group && ['section.group', r.group.title, data.group.title]
       ].filter(Boolean);
       if (r.visibility !== vis) r.visHistory.push(r.visibility); // щоб можна було повернути попередню видимість
+      if (vis === 'private' && r.visibility !== 'private') r.owner = state.userId; // особистий розділ належить тому, хто його так налаштував
       Object.assign(r, data);
       changes.forEach(([type, before, after]) => logAdd({ type, target: { kind: 'section', id: r.slug, label: r.name }, section: r.slug, before, after }));
       toast(changes.length ? `Розділ «${name}» оновлено. Записів у журналі: ${changes.length}.` : 'Змін немає.');
     } else {
-      const slug = `sec${++state.sectionSeq}`;
-      ROWS.push({ slug, icon: vis === 'public' ? '◆' : '▣', children: [], visHistory: [], ...data });
-      logAdd({ type: 'section.create', target: { kind: 'section', id: slug, label: name }, section: slug, before: '—', after: `${VIS[vis]} · ${BY[data.topicsBy]}` });
-      toast(`Розділ «${name}» створено. Демо: лише в цій вкладці.`);
+      createSection(data);
+      toast(`Розділ «${name}» створено окремою карткою в «${data.group.title}». Демо: лише в цій вкладці.`);
     }
     // Та сама адреса не викликає hashchange — тоді перемальовуємо вручну
     if (location.hash === '#/manage') route(); else location.hash = '#/manage';
@@ -2017,8 +2063,10 @@
 
   /* ---------- Створення теми (лише в пам'яті вкладки) ---------- */
   let pendingFiles = [];
-  function openComposer(slug, templateKey) {
+  // mode: 'topic' або 'section' (лише модератор і розробник); group — група для нового розділу
+  function openComposer(slug, templateKey, mode = 'topic', group = 'main') {
     const tpl = templateKey ? D.TEMPLATES[templateKey] : null;
+    if (mode === 'section' && !canModerate()) mode = 'topic';
     // Лише розділи, де поточна роль може створювати теми
     if (isBanned()) { toast('Доступ до форуму обмежено баном — створювати теми не можна.'); return; }
     const mute = activeOf(state.userId, 'mute');
@@ -2028,8 +2076,18 @@
     const sel = canCreateIn(rowBy(slug)) ? slug : (writable.find(r => r.slug === 'tech') || writable[0]).slug;
     const staff = canModerate();
     pendingFiles = [];
-    openModal('Нова тема', 'Створити тему', `
-      <form id="composer" class="composer" novalidate>
+    const sec = mode === 'section';
+    openModal(sec ? 'Новий розділ' : 'Нова тема', sec ? 'Створити розділ' : 'Створити тему', `
+      ${staff ? `<div class="create-mode" role="tablist" aria-label="Що створити">
+        <button type="button" role="tab" id="mode-topic" data-create-mode="topic" aria-controls="composer" aria-selected="${!sec}"><b>✎ Створити тему</b><small>допис у вибраному розділі</small></button>
+        <button type="button" role="tab" id="mode-section" data-create-mode="section" aria-controls="newsection" aria-selected="${sec}"><b>▦ Створити розділ</b><small>нова картка на головній</small></button>
+      </div>
+      <form id="newsection" class="composer" role="tabpanel" aria-labelledby="mode-section" novalidate${sec ? '' : ' hidden'}>
+        <p class="route-note">Розділ з’явиться окремою карткою в обраній групі — поруч із «Новини міста», «Техпідтримка» тощо. Теми в ньому створюються потім через «Створити тему».</p>
+        ${sectionFieldsHtml(null, 'ns', group)}
+        <div class="route-actions"><button class="btn btn-primary" type="submit">▦ Створити розділ</button><button class="btn" type="button" data-cancel>Скасувати</button></div>
+      </form>` : ''}
+      <form id="composer" class="composer"${staff ? ' role="tabpanel" aria-labelledby="mode-topic"' : ''} novalidate${sec ? ' hidden' : ''}>
         ${sectionPickerHtml(writable, sel)}
         ${staff ? `
         <fieldset class="field">
@@ -2060,8 +2118,8 @@
         </div>
         <input type="hidden" id="c-template" value="${esc(templateKey || '')}">
         <div class="route-note">Автор: ${esc(me().name)} · ${ROLE_NAME[myRole()]}. ${staff ? '' : 'Після публікації назву, розділ і налаштування теми змінює лише модерація; власне повідомлення ви зможете відредагувати. '}Демо: тема з’явиться лише в цій вкладці. Нічого не надсилається.</div>
-        <div class="route-actions"><button class="btn btn-primary" type="submit">Опублікувати</button><button class="btn" type="button" data-cancel>Скасувати</button></div>
-      </form>`, tpl?.title ? '#c-title' : '#c-section-btn');
+        <div class="route-actions"><button class="btn btn-primary" type="submit">✎ Опублікувати тему</button><button class="btn" type="button" data-cancel>Скасувати</button></div>
+      </form>`, sec ? '#ns-name' : tpl?.title ? '#c-title' : '#c-section-btn');
   }
 
   function composerSubmit(form) {
@@ -2137,6 +2195,19 @@
       }
       return;
     }
+    // Створити розділ — кнопка біля групи на головній (модератор і розробник)
+    const ns = t.closest('[data-new-section]');
+    if (ns) { openComposer(null, null, 'section', ns.dataset.newSection); return; }
+    // Перемикач у діалозі: «Створити тему» ↔ «Створити розділ»
+    const cm = t.closest('[data-create-mode]');
+    if (cm) {
+      const sec = cm.dataset.createMode === 'section';
+      $('#newsection').hidden = !sec; $('#composer').hidden = sec;
+      $$('[data-create-mode]').forEach(b => b.setAttribute('aria-selected', String(b === cm)));
+      $('#modaleyebrow').textContent = sec ? 'Новий розділ' : 'Нова тема';
+      $('#modaltitle').textContent = sec ? 'Створити розділ' : 'Створити тему';
+      return;
+    }
     const comp = t.closest('[data-compose]');
     if (comp) {
       const cur = currentTopic();
@@ -2178,7 +2249,7 @@
     if (t.closest('[data-restore-vis]')) {
       const r = rowBy($('#secform').dataset.slug);
       const prev = r.visHistory.at(-1);
-      if (!prev || !canManage(r) || (prev === 'dev' && !isDev())) return;
+      if (!prev || !canManage(r) || !canSetVis(prev)) return;
       const was = r.visibility;
       r.visibility = r.visHistory.pop();
       logAdd({ type: 'section.restore', target: { kind: 'section', id: r.slug, label: r.name }, section: r.slug, before: VIS[was], after: VIS[r.visibility] });
@@ -2456,6 +2527,15 @@
       return;
     }
     if (e.target.id === 'composer') { e.preventDefault(); composerSubmit(e.target); }
+    if (e.target.id === 'newsection') {
+      e.preventDefault();
+      const data = sectionDataFrom(e.target, 'ns');
+      if (!data) return;
+      const row = createSection(data);
+      closeModal(false);
+      location.hash = `#/section/${row.slug}`;
+      toast(`Розділ «${row.name}» створено окремою карткою в «${data.group.title}». Демо: лише в цій вкладці.`);
+    }
     if (e.target.id === 'replyform') {
       e.preventDefault();
       const topic = currentTopic();

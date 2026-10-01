@@ -1140,3 +1140,19 @@ fieldset.field { border: 0; margin: 0; padding: 0; }
 .sp-opt[aria-selected="true"] { border-left-color: var(--orange); background: var(--orange-soft); color: var(--orange-2); }
 .sp-opt[aria-selected="true"] .sp-check { visibility: visible; }
 @media (max-width: 760px) { .sp-opt { min-height: 44px; } }
+
+/* Діалог створення: чіткий перемикач «Створити тему» / «Створити розділ» (модератор, розробник) */
+.create-mode { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin: 4px 0 18px; }
+.create-mode button { display: grid; gap: 2px; padding: 10px 14px; border: 1px solid var(--line-2); border-radius: var(--radius); background: var(--surface); color: var(--text-2); text-align: left; font: inherit; cursor: pointer; }
+.create-mode button b { font: 700 15px/1.2 var(--display); letter-spacing: .06em; text-transform: uppercase; }
+.create-mode button small { color: var(--muted); font-size: 12px; }
+.create-mode button:hover { border-color: #414955; color: #fff; }
+.create-mode button[aria-selected="true"] { border-color: var(--orange); background: var(--orange-soft); color: var(--orange-2); }
+.create-mode button:focus-visible { outline: 2px solid var(--orange-2); outline-offset: 2px; }
+.sec-place { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.sec-place .choice { margin-top: 0; }
+/* Кнопка «+ Розділ» біля назви групи на головній */
+.ix-newsec { margin-left: 10px; padding: 3px 9px; border: 1px solid var(--line-2); border-radius: 999px; background: none; color: var(--orange-2); font: 700 11px/1.2 var(--font); letter-spacing: .02em; text-transform: none; cursor: pointer; }
+.ix-newsec:hover { border-color: var(--orange); background: var(--orange-soft); }
+.visbadge.vis-private, .visbadge.vis-mod { color: var(--orange-2); }
+@media (max-width: 760px) { .create-mode, .sec-place { grid-template-columns: 1fr; } }
