@@ -1106,3 +1106,6 @@ fieldset.field { border: 0; margin: 0; padding: 0; }
   .blockform .bf-row { grid-template-columns: 64px minmax(0, 1fr); }
   .blockform .bf-colors { grid-column: 1 / -1; grid-template-columns: auto 1fr; align-items: center; gap: 10px; }
 }
+
+/* Карта на головній: опущена на висоту прибраної смуги під шапкою (33px), щоб не впиралася в рядок перемикача ролей */
+@media (min-width: 761px) { .hm-map { top: 15px; } }
