@@ -1025,3 +1025,63 @@ fieldset.field { border: 0; margin: 0; padding: 0; }
 
 /* Нік автора в рядку теми — вбудоване посилання в підписі, а не другий заголовок */
 .topictext small .userlink, .rc-main small .userlink { display: inline; margin: 0; font: inherit; font-weight: 700; letter-spacing: 0; text-transform: none; }
+
+/* Блок із номером у повідомленнях користувачів: колір обирає автор (ті самі кольори, що й на сайті) */
+.rsec-user { border-top: 0; padding: 10px 0 8px; }
+.rsec.c-orange .rsec-num { border-color: var(--orange); color: var(--orange); }
+.rsec.c-green .rsec-num { border-color: var(--green); color: var(--green); }
+.rsec.c-red .rsec-num { border-color: var(--red); color: var(--red); }
+.rsec.c-teal .rsec-num { border-color: var(--teal); color: var(--teal); }
+.msgbody .rsec-user + .rsec-user { border-top: 1px solid var(--line); }
+
+/* Форма блоку в редакторі */
+.fmt-block { width: auto; padding: 0 10px; font-weight: 700; }
+.fmtbar-mini { margin-bottom: 6px; }
+.blockform { display: grid; gap: 12px; margin: 8px 0 10px; padding: 14px 16px; border: 1px solid var(--orange); border-radius: var(--radius); background: var(--surface); }
+.bf-head { margin: 0; font: 700 13px/1 var(--display); letter-spacing: .14em; text-transform: uppercase; color: var(--orange-2); }
+.bf-row { display: grid; grid-template-columns: 110px minmax(0, 1fr); gap: 12px; }
+.blockform label { display: grid; gap: 6px; font-weight: 700; font-size: 13px; }
+.blockform label small { font-weight: 400; color: var(--muted); }
+.blockform input[type="text"], .blockform input[type="number"], .blockform textarea {
+  width: 100%; min-height: 40px; padding: 8px 10px; border: 1px solid var(--line-2); border-radius: var(--radius); background: var(--bg); color: var(--text); font: inherit; font-weight: 400; }
+.blockform textarea { resize: vertical; line-height: 1.5; }
+.blockform input:focus, .blockform textarea:focus { outline: none; border-color: var(--orange); box-shadow: 0 0 0 1px var(--orange); }
+.bf-colors { display: flex; flex-wrap: wrap; gap: 8px; margin: 0; padding: 0; border: 0; }
+.bf-colors legend { margin-bottom: 6px; padding: 0; font-weight: 700; font-size: 13px; }
+.blockform .bf-color { display: inline-flex; align-items: center; gap: 8px; padding: 6px 12px 6px 10px; border: 1px solid var(--line-2); border-radius: 999px; cursor: pointer; font-weight: 600; }
+.bf-color::before { content: ""; width: 12px; height: 12px; border-radius: 50%; background: var(--c); }
+.bf-color.c-orange { --c: var(--orange); } .bf-color.c-green { --c: var(--green); } .bf-color.c-red { --c: var(--red); } .bf-color.c-teal { --c: var(--teal); }
+.bf-color input { position: absolute; opacity: 0; width: 1px; height: 1px; }
+.bf-color:has(input:checked) { border-color: var(--c); background: rgba(255, 255, 255, .04); }
+.bf-color:has(input:focus-visible) { outline: 2px solid var(--orange-2); outline-offset: 2px; }
+.bf-preview { padding: 4px 12px; border: 1px dashed var(--line-2); border-radius: var(--radius); }
+.bf-actions { display: flex; flex-wrap: wrap; gap: 8px; }
+@media (max-width: 760px) { .bf-row { grid-template-columns: 90px minmax(0, 1fr); } .blockform { padding: 12px; } }
+
+/* Форма блоку — компактне спливне вікно біля кнопки «Блок» (поверх сторінки, не в рядку редактора) */
+.blockform { position: fixed; z-index: 80; width: min(380px, calc(100vw - 24px)); margin: 0; gap: 10px; padding: 12px 14px 14px; overflow: auto; overscroll-behavior: contain;
+  background: var(--surface-2); box-shadow: 0 18px 50px rgba(0, 0, 0, .55); }
+.bf-top { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.bf-top .x { width: 30px; height: 30px; min-height: 0; border: 0; background: none; color: var(--muted); font-size: 22px; line-height: 1; cursor: pointer; }
+.bf-top .x:hover { color: #fff; }
+.blockform .bf-row { grid-template-columns: 72px minmax(0, 1fr); gap: 10px; }
+.blockform input[type="text"], .blockform input[type="number"] { min-height: 36px; padding: 6px 10px; }
+.blockform textarea { min-height: 0; padding: 6px 10px; }
+.bf-colors { gap: 10px; align-items: center; }
+.bf-colors legend { display: flex; gap: 6px; }
+.bf-colors legend span { font-weight: 400; color: var(--muted); }
+.blockform .bf-color { width: 28px; height: 28px; padding: 0; justify-content: center; border-radius: 50%; border: 2px solid transparent; }
+.blockform .bf-color::before { width: 18px; height: 18px; }
+.blockform .bf-color:has(input:checked) { border-color: var(--c); background: none; }
+/* Попередній перегляд — ті самі класи, що й у повідомленні, лише дрібніший масштаб */
+.bf-preview { padding: 2px 10px; max-height: 150px; overflow: auto; }
+.bf-preview .rsec { grid-template-columns: 52px minmax(0, 1fr); gap: 0 12px; padding: 8px 0; }
+.bf-preview .rsec-num { font-size: 24px; padding-left: 10px; }
+.bf-preview .rsec-title { font-size: 18px; margin: 2px 0 6px; }
+.bf-preview .ritems li { grid-template-columns: 34px minmax(0, 1fr); font-size: 14px; padding: 1px 0; }
+.bf-actions .btn { min-height: 36px; padding: 6px 14px; }
+.bf-backdrop { position: fixed; inset: 0; z-index: 79; background: rgba(4, 5, 7, .6); }
+.bf-backdrop[hidden] { display: none; }
+/* Телефон: модальна панель знизу на всю ширину */
+.blockform.is-sheet { left: 0; right: 0; bottom: 0; top: auto; width: 100%; max-height: 82vh; border-radius: 12px 12px 0 0; border-width: 1px 0 0; padding-bottom: calc(14px + env(safe-area-inset-bottom)); }
+.blockform.is-sheet .bf-preview .rsec { grid-template-columns: minmax(0, 1fr); gap: 4px; }

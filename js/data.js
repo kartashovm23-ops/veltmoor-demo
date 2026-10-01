@@ -8,7 +8,7 @@
 window.DEMO_DATA = (() => {
   /*
    * Структура головної: дві групи розділів.
-   * visibility: public (усім, за замовчуванням) · team (команда: хелпери, модератори, розробники) · dev (лише розробники).
+   * visibility: public (усім, за замовчуванням) · team (команда: хелпери, модератори, розробники; напр. «Хелпери») · dev (лише розробники).
    * topicsBy: players (теми створюють усі, за замовчуванням) · team (лише модератори й розробники).
    * genre: official (документи команди) · discussion (обговорення) · appeals (звернення зі статусами) — задає структуру рядка.
    */
@@ -30,7 +30,7 @@ window.DEMO_DATA = (() => {
           children: ['Загальні правила', 'Правила угруповань', 'Правила міських служб', 'Правила подій'] },
         { slug: 'rp', icon: '✦', name: 'Історії персонажів', genre: 'discussion', children: ['Біографії', 'Сюжетні сцени'] },
         { slug: 'org', icon: '▦', name: 'Служби та угруповання', genre: 'appeals', children: ['Міські служби', 'Синдикати', 'Вуличні банди'] },
-        { slug: 'helpers', icon: '◇', name: 'Хелпери', children: [], topicsBy: 'team', genre: 'official' }
+        { slug: 'helpers', icon: '◇', name: 'Хелпери', children: [], visibility: 'team', topicsBy: 'team', genre: 'official' }
       ]
     }
   ];

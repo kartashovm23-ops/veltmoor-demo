@@ -182,7 +182,8 @@
 
   const rowBy = slug => ROWS.find(r => r.slug === slug);
   const topicBy = id => topics.find(t => t.id === id);
-  const postsOf = t => t.replies.filter(x => x.type === 'post');
+  // Лічильники відповідей: приховані враховуються лише для модерації
+  const postsOf = t => t.replies.filter(x => x.type === 'post' && (!x.hidden || canModerate()));
   const lastAt = t => [t.at, ...t.replies.map(x => x.at)].sort().at(-1);
   const lastAuthor = t => { const p = postsOf(t); return (p.length ? p.at(-1).author : t.author).name; };
   const shownTopics = () => topics.filter(seeTopic);
@@ -311,11 +312,6 @@
     </svg>`;
   }
 
-  // Смуга нічного міста для внутрішніх сторінок
-  const banner = () => `<div class="banner" role="img" aria-label="Нічний Велтмур — власна ілюстрація">
-      <span class="bn-tag">Every light<br>tells<br>a story</span>
-      <span class="bn-call">Veltmoor<br>City operations<br><b>Концепт · демо</b></span>
-    </div>`;
 
   // Рядок теми: однакова структура для розділу й пошуку; жанр змінює праву колонку
   function topicRow(t, withSection = false) {
@@ -459,7 +455,6 @@
       if (!shown.length) body += `<div class="empty">Тут поки немає тем.${canCreateIn(r) ? ` <button class="smalllink" type="button" data-compose="${r.slug}">Створити першу →</button>` : ''}</div>`;
     }
     $('#view-section').innerHTML = `
-      ${banner()}
       <div class="pg">
         <div class="pg-main">
           <header class="pg-head g-${g}">
@@ -590,7 +585,38 @@
       .replace(/__([^_\n]+)__/g, '<u>$1</u>')
       .replace(/\*([^*\n]+)\*/g, '<em>$1</em>');
   }
+  /*
+   * Блок із номером (як розділи в довгих темах): номер, заголовок, колір і пункти N.1, N.2…
+   * Розмітка в тексті повідомлення:
+   *   [блок 01 | Заголовок | зелений]
+   *   - перший пункт
+   *   - другий пункт
+   *   [/блок]
+   */
+  const BLOCK_COLORS = [['orange', 'помаранчевий'], ['green', 'зелений'], ['red', 'червоний'], ['teal', 'бірюзовий']];
+  const BLOCK_RE = /^[ \t]*\[блок[ \t]+(\d{1,2})[ \t]*\|([^|\]\n]*)(?:\|[ \t]*([^\]\n]*?))?[ \t]*\][ \t]*\n?([\s\S]*?)^[ \t]*\[\/блок\][ \t]*$/gimu;
+  const blockColor = name => (BLOCK_COLORS.find(([k, uk]) => uk === (name || '').trim().toLowerCase() || k === (name || '').trim().toLowerCase()) || BLOCK_COLORS[0])[0];
+  const blockItems = body => body.split('\n').map(l => l.replace(/^\s*(?:[-•]|\d+[.)])\s+/, '').trim()).filter(Boolean);
+  function blockHtmlUser(num, title, color, items) {
+    const n = Math.max(1, Math.min(99, +num || 1));
+    return `<section class="rsec rsec-user c-${color}">
+      <span class="rsec-num" aria-hidden="true">${pad2(n)}</span>
+      <div class="rsec-body"><h3 class="rsec-title"><span class="sr">${n}. </span>${inlineFmt(title.trim() || 'Без назви')}</h3>
+        ${items.length ? `<ol class="ritems">${items.map((it, i) => `<li><span class="rn">${n}.${i + 1}</span><span>${inlineFmt(it)}</span></li>`).join('')}</ol>` : ''}</div>
+    </section>`;
+  }
+  // Текст повідомлення: блоки з номером оформлюються окремо, решта — звичайна міні-розмітка
   function formatText(src) {
+    const text = src.replace(/\r/g, '');
+    let html = '', last = 0;
+    for (const m of text.matchAll(BLOCK_RE)) {
+      html += formatPlain(text.slice(last, m.index));
+      html += blockHtmlUser(m[1], m[2], blockColor(m[3]), blockItems(m[4]));
+      last = m.index + m[0].length;
+    }
+    return html + formatPlain(text.slice(last));
+  }
+  function formatPlain(src) {
     const out = [];
     let para = [], list = null, quote = [];
     const flushPara = () => { if (para.length) out.push(`<p>${para.map(inlineFmt).join('<br>')}</p>`); para = []; };
@@ -623,7 +649,8 @@
     return `${d.toLocaleDateString('uk-UA', opts)}, ${hhmm(d)}`;
   };
   const excerpt = (s, n = 90) => { const x = s.replace(/\s+/g, ' ').trim(); return x.length > n ? x.slice(0, n - 1).trimEnd() + '…' : x; };
-  const stripMarks = s => s.replace(/\[([^\]]+)\]\([^)]+\)/g, '$1').replace(/(\*\*|__|\*)/g, '').replace(/^\s*(?:[-•>]|\d+[.)])\s*/gm, '');
+  const stripMarks = s => s.replace(/^[ \t]*\[блок[ \t]+(\d{1,2})[ \t]*\|([^|\]\n]*)(?:\|[^\]\n]*)?\][ \t]*$/gimu, '$1. $2').replace(/^[ \t]*\[\/блок\][ \t]*$/gimu, '')
+    .replace(/\[([^\]]+)\]\([^)]+\)/g, '$1').replace(/(\*\*|__|\*)/g, '').replace(/^\s*(?:[-•>]|\d+[.)])\s*/gm, '');
   const plainOf = m => m.text ? stripMarks(m.text)
     : m.body.map(([k, v]) => k === 'steps' ? v.map(s => s.join(' — ')).join('; ') : k === 'dl' ? v.map(p => p.join(': ')).join('; ') : Array.isArray(v) ? v.join(' ') : v).join(' ');
   const sourceOf = m => m.text ?? toMarkup(m.body || []);
@@ -642,11 +669,152 @@
   // решта — лише власні, у відкритому обговоренні й без активного муту
   const canEdit = (t, m) => canModerate() || (isMine(m) && !t.locked && !isInfo(t) && !isMuted());
 
+  /* ---------- Блок із номером у редакторі: вставити новий або відредагувати той, де стоїть курсор ---------- */
+  const blockBtn = target => `<button class="fmt fmt-block" type="button" data-block-open data-target="${target}" aria-label="Блок із номером: вставити або змінити" title="Блок із номером (номер, заголовок, колір, пункти)">▤ Блок</button>`;
+  // Усі блоки в тексті поля з позиціями — щоб знайти той, у якому курсор
+  function blocksIn(value) {
+    return [...value.replace(/\r/g, '').matchAll(BLOCK_RE)].map(m => ({ start: m.index, end: m.index + m[0].length, num: +m[1], title: m[2].trim(), color: blockColor(m[3]), items: blockItems(m[4]) }));
+  }
+  /*
+   * Форма блоку — окреме спливне вікно поверх сторінки (не всередині рядка редактора, щоб не ламати
+   * панель інструментів і кнопку «Опублікувати»). На комп'ютері стоїть біля кнопки «Блок», на телефоні —
+   * модальна панель знизу. Пам'ятає поле й місце курсора на момент відкриття.
+   */
+  const bf = { form: null, backdrop: null, btn: null, ta: null, pos: 0, start: null, end: null };
+  // Останнє місце курсора в полі: кнопка забирає фокус, тож позицію запам'ятовуємо, коли поле його втрачає
+  document.addEventListener('focusout', e => {
+    if (e.target.matches?.('textarea.fmt-target, #c-text')) e.target.dataset.caret = e.target.selectionStart;
+  });
+  function closeBlockForm(refocus = false) {
+    if (!bf.form) return;
+    bf.form.remove(); bf.backdrop?.remove();
+    const ta = bf.ta;
+    Object.assign(bf, { form: null, backdrop: null, btn: null, ta: null, start: null, end: null });
+    if (refocus && ta?.isConnected) ta.focus();
+  }
+  function placeBlockForm() {
+    const f = bf.form;
+    if (!f) return;
+    const sheet = innerWidth <= 760;
+    f.classList.toggle('is-sheet', sheet);
+    bf.backdrop.hidden = !sheet;
+    if (sheet) { f.style.left = f.style.top = f.style.bottom = f.style.maxHeight = ''; return; }
+    const r = bf.btn.getBoundingClientRect(), m = 12, gap = 8;
+    // Не заходимо під липку шапку сайту (у діалозі створення теми шапка під затемненням — тоді лише відступ)
+    const head = overlay.hidden ? $('.header')?.getBoundingClientRect().bottom || 0 : 0;
+    const topLim = Math.max(m, head + gap);
+    f.style.maxHeight = '';
+    const w = f.offsetWidth, h = f.offsetHeight;
+    const below = innerHeight - r.bottom - gap - m, above = r.top - gap - topLim;
+    // Під кнопкою, якщо вміщається; інакше над панеллю — так форма не накриває рядок із «Опублікувати».
+    // Над кнопкою вікно прив'язане нижнім краєм і росте вгору; висота обмежена видимою частиною екрана.
+    const down = below >= h || below >= above;
+    const maxH = Math.min(innerHeight - topLim - m, Math.max(160, down ? below : above));
+    f.style.maxHeight = `${maxH}px`;
+    f.style.left = `${Math.min(Math.max(m, r.left), innerWidth - w - m)}px`;
+    // Навіть якщо кнопку прокрутили за край екрана, вікно лишається в межах видимої області
+    const fh = Math.min(h, maxH);
+    if (down) { f.style.top = `${Math.min(Math.max(topLim, r.bottom + gap), innerHeight - m - fh)}px`; f.style.bottom = 'auto'; }
+    else { f.style.top = 'auto'; f.style.bottom = `${Math.min(Math.max(m, innerHeight - r.top + gap), innerHeight - topLim - fh)}px`; }
+  }
+  function openBlockForm(btn) {
+    const ta = document.getElementById(btn.dataset.target);
+    if (!ta) return;
+    closeBlockForm();
+    const v = ta.value.replace(/\r/g, '');
+    // Курсор: якщо поле ще не редагували — у кінець тексту, а не на початок шаблону
+    const pos = Math.min(v.length, document.activeElement === ta ? ta.selectionStart : ta.dataset.caret != null ? +ta.dataset.caret : v.length);
+    const blocks = blocksIn(v);
+    const cur = blocks.find(b => pos >= b.start && pos <= b.end);
+    const d = cur || { num: Math.min(99, Math.max(0, ...blocks.map(b => b.num)) + 1), title: '', color: 'orange', items: [] };
+    const form = document.createElement('div');
+    form.className = 'blockform';
+    form.setAttribute('role', 'dialog');
+    form.setAttribute('aria-modal', 'false');
+    form.setAttribute('aria-labelledby', 'bf-head');
+    form.innerHTML = `
+      <div class="bf-top"><p class="bf-head" id="bf-head">${cur ? 'Редагування блоку' : 'Новий блок із номером'}</p><button class="x" type="button" data-block-cancel aria-label="Закрити без вставки">×</button></div>
+      <div class="bf-row">
+        <label class="bf-num">Номер<input id="bf-num" type="number" min="1" max="99" value="${d.num}" inputmode="numeric"></label>
+        <label class="bf-title">Заголовок<input id="bf-title" type="text" maxlength="60" value="${esc(d.title)}" placeholder="Напр. Створення" autocomplete="off"></label>
+      </div>
+      <fieldset class="bf-colors"><legend>Колір <span id="bf-color-name">${BLOCK_COLORS.find(([k]) => k === d.color)[1]}</span></legend>
+        ${BLOCK_COLORS.map(([k, uk]) => `<label class="bf-color c-${k}" title="${uk}"><input type="radio" name="bf-color" value="${k}"${d.color === k ? ' checked' : ''}><span class="sr">${uk}</span></label>`).join('')}
+      </fieldset>
+      <label class="bf-items">Пункти <small>кожен з нового рядка</small><textarea id="bf-items" rows="3" placeholder="Перший пункт&#10;Другий пункт">${esc(d.items.join('\n'))}</textarea></label>
+      <span class="err" id="bf-err" role="alert"></span>
+      <div class="bf-preview" id="bf-preview" aria-label="Попередній вигляд блоку"></div>
+      <div class="bf-actions"><button class="btn btn-primary" type="button" data-block-save>${cur ? 'Оновити блок' : 'Вставити блок'}</button><button class="btn" type="button" data-block-cancel>Скасувати</button></div>`;
+    const backdrop = document.createElement('div');
+    backdrop.className = 'bf-backdrop';
+    backdrop.setAttribute('data-block-cancel', '');
+    document.body.append(backdrop, form);
+    Object.assign(bf, { form, backdrop, btn, ta, pos, start: cur ? cur.start : null, end: cur ? cur.end : null });
+    updateBlockPreview();
+    placeBlockForm();
+    $('#bf-title').focus({ preventScroll: true });
+  }
+  addEventListener('resize', () => placeBlockForm());
+  addEventListener('scroll', () => placeBlockForm(), true);
+  // Вміст сторінки міг зсунутися вже після відкриття (довантаження, перенесення рядків) — вікно йде за кнопкою
+  if ('ResizeObserver' in window) new ResizeObserver(() => placeBlockForm()).observe(document.body);
+  // Клік поза формою (не по кнопці «Блок») закриває її без вставки
+  document.addEventListener('mousedown', e => {
+    if (bf.form && !bf.form.contains(e.target) && !e.target.closest('[data-block-open]')) closeBlockForm();
+  });
+  function blockFormData() {
+    return {
+      num: Math.max(1, Math.min(99, parseInt($('#bf-num').value, 10) || 1)),
+      title: $('#bf-title').value.replace(/[|\]\[\n]/g, ' ').replace(/\s+/g, ' ').trim(),
+      color: ($('[name="bf-color"]:checked') || {}).value || 'orange',
+      items: $('#bf-items').value.split('\n').map(l => l.replace(/^\s*(?:[-•]|\d+[.)])\s+/, '').trim()).filter(Boolean)
+    };
+  }
+  function updateBlockPreview() {
+    const box = $('#bf-preview');
+    if (!box) return;
+    const d = blockFormData();
+    // Той самий рендер, що й у опублікованому повідомленні
+    box.innerHTML = blockHtmlUser(d.num, d.title || 'Заголовок', d.color, d.items.length ? d.items : ['Пункти з’являться тут']);
+    const name = $('#bf-color-name');
+    if (name) name.textContent = BLOCK_COLORS.find(([k]) => k === d.color)[1];
+  }
+  function saveBlockForm() {
+    const ta = bf.ta;
+    if (!bf.form) return;
+    // Поле могли перемалювати (зміна ролі, оновлення теми) — тоді не пишемо в застарілий елемент
+    if (!ta?.isConnected) { closeBlockForm(); toast('Редактор оновився — відкрийте «Блок» ще раз.'); return; }
+    const d = blockFormData();
+    if (!d.title) { $('#bf-err').textContent = 'Вкажіть заголовок блоку.'; $('#bf-title').focus(); return; }
+    if (!d.items.length) { $('#bf-err').textContent = 'Додайте хоча б один пункт.'; $('#bf-items').focus(); return; }
+    const uk = BLOCK_COLORS.find(([k]) => k === d.color)[1];
+    // Текст пункту не може випадково закрити блок
+    const items = d.items.map(i => i.replace(/\[\/?блок/giu, '(блок'));
+    const markup = `[блок ${pad2(d.num)} | ${d.title} | ${uk}]\n${items.map(i => `- ${i}`).join('\n')}\n[/блок]`;
+    const v = ta.value.replace(/\r/g, '');
+    const editing = bf.start != null;
+    let start, end, text;
+    if (editing) { start = bf.start; end = bf.end; text = markup; }
+    else {
+      start = end = Math.min(bf.pos, v.length);
+      // Блок завжди окремими рядками — із порожнім рядком до й після
+      text = `${start > 0 && !/\n\n$/.test(v.slice(0, start)) ? (v.slice(0, start).endsWith('\n') ? '\n' : '\n\n') : ''}${markup}${v.slice(end).startsWith('\n') ? '\n' : '\n\n'}`;
+    }
+    ta.value = v.slice(0, start) + text + v.slice(end);
+    closeBlockForm();
+    ta.focus();
+    ta.setSelectionRange(start + text.length, start + text.length);
+    ta.dataset.caret = start + text.length;
+    ta.dispatchEvent(new Event('input', { bubbles: true }));
+    toast(editing ? 'Блок оновлено в тексті повідомлення.' : 'Блок додано в текст повідомлення.');
+  }
+
   function toolbarHtml(target, withAttach) {
     const b = (fmt, label, html) => `<button class="fmt" type="button" data-fmt="${fmt}" data-target="${target}" aria-label="${label}" title="${label}">${html}</button>`;
     return `<div class="fmtbar" role="toolbar" aria-label="Форматування тексту" aria-controls="${target}">
       ${b('bold', 'Жирний (Ctrl+B)', '<b>B</b>')}${b('italic', 'Курсив (Ctrl+I)', '<i>I</i>')}${b('underline', 'Підкреслений (Ctrl+U)', '<u>U</u>')}
       ${b('list', 'Список', '≡')}${b('quote', 'Цитата', '❝')}${b('link', 'Посилання', '🔗')}
+      ${blockBtn(target)}
       ${withAttach ? `<button class="fmt fmt-file" type="button" data-attach aria-label="Додати фото або файл">◈ Додати файл</button>` : ''}
     </div>`;
   }
@@ -828,6 +996,7 @@
   }
 
   function renderTopic(t) {
+    closeBlockForm(); // поле редактора перемальовується — форма блоку не повинна писати в старе
     const r = rowBy(t.section);
     // Панель керування — модератору й розробнику в розділах, якими вони керують
     const isMod = canModerate() && canManage(r);
@@ -835,7 +1004,8 @@
     const mute = activeOf(state.userId, 'mute');
     if (state.shownTopic !== t.id) { state.editing = null; }
     state.shownTopic = t.id;
-    const msgs = messagesOf(t);
+    // Приховані модератором відповіді гравцям не показуємо взагалі — ні змісту, ні заглушки, ні номера
+    const msgs = messagesOf(t).filter(m => !m.hidden || canModerate());
     const [first, ...replies] = msgs;
     topicChrome(t);
     const g = genreOf(r);
@@ -850,7 +1020,6 @@
     const participants = [...new Map(msgs.map(m => [m.author.name, m.author])).values()];
 
     $('#view-topic').innerHTML = `
-      ${banner()}
       <div class="topicpage${isMod ? ' with-panel' : ''}${isInfo(t) ? ' is-info' : ''}">
         <div class="tp-main">
           ${t.draft ? `<div class="demo-banner" role="note"><span aria-hidden="true">ⓘ</span><div><b>Чернетка демонстрації.</b> Ця тема існує лише в поточній вкладці й зникне після оновлення сторінки.</div></div>` : ''}
@@ -1233,7 +1402,6 @@
     const f = state.memRole || '';
     const counts = Object.fromEntries(ROLES.map(([k]) => [k, USERS.filter(u => u.role === k).length]));
     $('#view-members').innerHTML = `
-      ${banner()}
       <div class="pg pg-single members">
         <div class="pg-main">
           <header class="pg-head">
@@ -1528,6 +1696,7 @@
   }
 
   function route(keep = false) {
+    closeBlockForm(); // форма блоку прив'язана до поля поточної сторінки
     const [path, query] = location.hash.replace(/^#\/?/, '').split('?');
     const [kind, ...rest] = path.split('/');
     const arg = decodeURIComponent(rest.join('/'));
@@ -1688,6 +1857,7 @@
     ($(focusSel || '#close', overlay) || $('#close')).focus();
   }
   function closeModal(restore = true) {
+    closeBlockForm();
     if (overlay.hidden) return;
     overlay.hidden = true;
     document.body.style.overflow = '';
@@ -1767,6 +1937,7 @@
         </div>
         <div class="field">
           <label for="c-text">Текст</label>
+          <div class="fmtbar fmtbar-mini" role="toolbar" aria-label="Оформлення тексту" aria-controls="c-text">${blockBtn('c-text')}</div>
           <textarea id="c-text" rows="7" aria-describedby="c-text-err">${esc(tpl?.text || '')}</textarea>
           <span class="err" id="c-text-err"></span>
         </div>
@@ -1860,6 +2031,11 @@
       openComposer(comp.dataset.compose || (views.section.hidden ? null : lastSection) || cur?.section, comp.dataset.template);
       return;
     }
+    // Блок із номером — у редакторі відповіді, редагування й створення теми (тож до перевірки «чи відкрита тема»)
+    const bo = t.closest('[data-block-open]');
+    if (bo) { openBlockForm(bo); return; }
+    if (t.closest('[data-block-save]')) { saveBlockForm(); return; }
+    if (t.closest('[data-block-cancel]')) { closeBlockForm(true); return; }
     if (t.closest('[data-cancel]')) { closeModal(); return; }
     if (t.closest('[data-close]')) { closeModal(false); return; }
     const sub = t.closest('[data-sub]');
@@ -2033,6 +2209,19 @@
     if (e.target.id === 'people-f') { state.peopleF = e.target.value; renderPeople(); $('#people-f').focus(); }
     if (/^lf-(staff|type|date)$/.test(e.target.id)) { state.logF[e.target.id.slice(3)] = e.target.value; renderLogList(); }
   });
+  // Форма блоку: живий попередній перегляд; Enter вставляє блок, Esc закриває лише форму блоку
+  ['input', 'change'].forEach(ev => document.addEventListener(ev, e => {
+    if (!e.target.closest?.('.blockform')) return;
+    $('#bf-err').textContent = '';
+    updateBlockPreview();
+    placeBlockForm(); // попередній перегляд міг змінити висоту — тримаємо вікно в межах екрана
+  }));
+  document.addEventListener('keydown', e => {
+    if (!e.target.closest?.('.blockform')) return;
+    if (e.key === 'Escape') { e.preventDefault(); e.stopImmediatePropagation(); closeBlockForm(true); }
+    else if (e.key === 'Enter' && e.target.tagName === 'INPUT') { e.preventDefault(); saveBlockForm(); }
+  }, true);
+
   // Учасники: пошук за ніком і фільтр ролі оновлюють лише список (фокус і курсор лишаються в полі)
   document.addEventListener('input', e => {
     if (e.target.id === 'mem-q') { state.memQ = e.target.value; $('#mem-list').innerHTML = membersListHtml(); }
